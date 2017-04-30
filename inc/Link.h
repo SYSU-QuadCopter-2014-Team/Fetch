@@ -15,6 +15,7 @@
 #include "LinuxWaypoint.h"
 #include "LinuxCamera.h"
 
+// 单位：米
 DJI::Vector3dData getTargetOffset();
 
 #endif // LINK_H

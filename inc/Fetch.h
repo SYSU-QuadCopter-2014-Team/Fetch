@@ -24,4 +24,10 @@
  * */
 int flyToTarget(CoreAPI* api, Flight* flight, int timeoutInMs, float posThresholdInCm);
 
+/*! 根据相对坐标xyz移动。使用PID控制。
+ *  
+ *  @return 错误码：0 代表成功，1 代表超时。
+ * */
+int moveByPositionOffset(CoreAPI* api, Flight* flight, float32_t xOffsetDesired, float32_t yOffsetDesired, float32_t zOffsetDesired, int timeoutInMs, float posThresholdInCm);
+
 #endif // FETCH_H
