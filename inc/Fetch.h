@@ -24,7 +24,7 @@
  * */
 int flyToTarget(CoreAPI* api, Flight* flight, int timeoutInMs, float posThresholdInCm);
 
-/*! 根据相对坐标xyz移动。使用PID控制。
+/*! 位置PID控制（包括偏航角）。进行相对位移。
  *  
  *  @return 错误码：0 代表成功，1 代表超时。
  * */
