@@ -2,6 +2,7 @@
 //#include "../kcfsrc/runtracker.h"
 //#include "Flightcontrol.h"
 //#include "Gimbalcontrol.h"
+#include "../kcfsrc/TrackWithDistance.h"
 
 #include <stdio.h>
 #include <sys/time.h>
@@ -166,6 +167,8 @@ void Tracking_system::cmd_match()
 	}
 	else
 	{
+		float x, y, z, yaw;
+		float timeoutInS, posThresholdInCm, maxSpeedInM;
 		switch (command_num)
 		{
 		case 0:

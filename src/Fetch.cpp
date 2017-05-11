@@ -1,44 +1,18 @@
-
-// copy from LinuxFlight.h
-
-#define C_EARTH (double) 6378137.0
-#define DEG2RAD 0.01745329252
-
-// copy from DJICommonType.h
-
-//! @note This struct will replace SpaceVector in a future release.
-//! Eigen-like naming convention
-typedef struct Vector3dData
-{
-  double x;
-  double y;
-  double z;
-} Vector3dData;
-
-typedef double Angle;
-
-typedef struct EulerAngle
-{
-  Angle yaw;
-  Angle roll;
-  Angle pitch;
-} EulerAngle;
-
-// our code
-
 #include <time.h>
 
 #include <opencv2/opencv.hpp>
 
+#include <boost/thread.hpp>
+
 #include "Fetch.h"
 
-#include "../kcfsrc/TrackWithDistance.h"
-#include "../kcfsrc/estimatePos.h"
-#include "../kcfsrc/PIDControl.h"
+#include "TrackWithDistance.h"
+#include "estimatePos.h"
+#include "PIDControl.h"
 
 using namespace std;
 
-Fetch::Fetch(timeoutInS = 30, float posThresholdInCm = 10.0f, float maxSpeedInM = 0.1f)
+Fetch::Fetch(float timeoutInS, float posThresholdInCm, float maxSpeedInM)
   : timeoutInS(timeoutInS), posThresholdInCm(posThresholdInCm), maxSpeedInM(maxSpeedInM)
 {
   record_flag = false;
@@ -52,7 +26,8 @@ void Fetch::setFlight(Flight * value) {flight = value;}
 
 void Fetch::start_position_control(float x, float y, float z, float yaw) {
   stop_task = false;
-  boost::thread record(boost::bind(&Fetch::moveByPositionOffset, this, x, y, z, yaw));
+  boost::thread record(boost::bind(&Fetch::record, this));
+  boost::thread move(boost::bind(&Fetch::moveByPositionOffset, this, x, y, z, yaw));
 }
 
 /*member function for tracknig*/
@@ -70,7 +45,7 @@ void Fetch::stop() {
   stop_task = true;
 }
 
-void Fetch::setParameters(int timeoutInS, float posThresholdInCm, float maxSpeedInM) {
+void Fetch::setParameters(float timeoutInS, float posThresholdInCm, float maxSpeedInM) {
   this->timeoutInS = timeoutInS;
   this->posThresholdInCm = posThresholdInCm;
   this->maxSpeedInM = maxSpeedInM;
@@ -91,8 +66,29 @@ void localOffsetFromGpsOffset(Vector3dData& deltaNed,
   deltaNed.z = target->height - origin->height;
 }
 
+EulerAngle toEulerAngle(QuaternionData quaternionData)
+{
+  EulerAngle ans;
+
+  double q2sqr = quaternionData.q2 * quaternionData.q2;
+  double t0 = -2.0 * (q2sqr + quaternionData.q3 * quaternionData.q3) + 1.0;
+  double t1 = +2.0 * (quaternionData.q1 * quaternionData.q2 + quaternionData.q0 * quaternionData.q3);
+  double t2 = -2.0 * (quaternionData.q1 * quaternionData.q3 - quaternionData.q0 * quaternionData.q2);
+  double t3 = +2.0 * (quaternionData.q2 * quaternionData.q3 + quaternionData.q0 * quaternionData.q1);
+  double t4 = -2.0 * (quaternionData.q1 * quaternionData.q1 + q2sqr) + 1.0;
+
+  t2 = t2 > 1.0 ? 1.0 : t2;
+  t2 = t2 < -1.0 ? -1.0 : t2;
+
+  ans.pitch = asin(t2);
+  ans.roll = atan2(t3, t4);
+  ans.yaw = atan2(t1, t0);
+
+  return ans;
+}
+
 // 修改自sample：Liunx Blocking
-// todo finish the calculation of yaw
+// todo finish the record about yaw
 void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 
   static const double yawThresholdInDeg = 5;
@@ -103,12 +99,11 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
   double yawDesiredRad = DEG2RAD * yaw;
   double yawThresholdInRad = DEG2RAD * yawThresholdInDeg;
   int elapsedTime = 0;
-  float ux, uy, uz, uyaw;
+  float uyaw;
 
   // Get current poition
   PositionData originPosition = api->getBroadcastData().pos;
   Vector3dData curLocalOffset;
-  Vector3dData error;
 
   // todo 设置PID参数
   PIDControl xController(1, 0, 0, maxSpeedInM, intervalInMs / 1000.0);
@@ -118,26 +113,35 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 
   while (true) {
 
+		if (stop_task) {
+      std::cout << "\ntask stopped\n";
+      flight_control(flag, 0, 0, 0, 0);
+      break;
+		}
+
     // 获取误差
     PositionData curPosition = api->getBroadcastData().pos;
     EulerAngle curEuler = toEulerAngle(api->getBroadcastData().q);
 
     localOffsetFromGpsOffset(curLocalOffset, &curPosition, &originPosition);
-    error.x = x - curLocalOffset.x;
-    error.y = y - curLocalOffset.y;
-    error.z = z - curLocalOffset.z;
+    ex = x - curLocalOffset.x;
+    ey = y - curLocalOffset.y;
+    ez = z - curLocalOffset.z;
     double errorYaw = yawDesiredRad - curEuler.yaw;
-    if (std::fabs(error.x) <= posThresholdInM &&
-        std::fabs(error.y) <= posThresholdInM &&
-        std::fabs(error.z) <= posThresholdInM &&
+    if (std::fabs(ex) <= posThresholdInM &&
+        std::fabs(ey) <= posThresholdInM &&
+        std::fabs(ez) <= posThresholdInM &&
         std::fabs(errorYaw) <= yawThresholdInRad)
       break;
 
     // 计算控制量
-    ux = xController(error.x);
-    uy = yController(error.y);
-    uz = zController(error.z);
+    ux = xController(ex);
+    uy = yController(ey);
+    uz = zController(ez);
     uyaw = yawController(errorYaw);
+
+    cout << "ex:" << ex << " ey:" << ey << " ez:" << ez << "\r";
+		record_flag = true;
 
     // 发送控制
     flight_control(flag, ux, uy, uz, uyaw);
@@ -166,12 +170,9 @@ void Fetch::record()
   sprintf(s, "%4d%02d%02d_%02d_%02d_%02d", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
   string time(s);
 
-  string filename1 = time + "_error.txt";
-  string filename2 = time + "_velocity.txt";
-  string filename3 = time + "_u.txt";
-  std::ofstream ferror(filename1.c_str());
-  std::ofstream fvelocity(filename2.c_str());
-  std::ofstream fu(filename3.c_str());
+  std::ofstream ferror((time + "_error.txt").c_str());
+  std::ofstream fvelocity((time + "_velocity.txt").c_str());
+  std::ofstream fu((time + "_u.txt").c_str());
   /*string filename2 = s + "roll_L.txt";
   string filename3 = s + "pitch_L.txt";
   string filename4 = s + "velocity_L.txt";
@@ -220,6 +221,7 @@ void Fetch::approaching()
 {
   const uint8_t flag = 0x49;  // Velocity Control
   const float32_t posThresholdInM = posThresholdInCm / 100;
+	double plane_angle_yaw, plane_angle_roll, plane_angle_pitch;
 
   time_t startTime, curTime;
   time(&startTime);
