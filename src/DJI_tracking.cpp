@@ -167,8 +167,8 @@ void Tracking_system::cmd_match()
 	}
 	else
 	{
-		float x, y, z, yaw;
-		float timeoutInS, posThresholdInCm, maxSpeedInM;
+		float x, y, z, yaw, input;
+		int num = 0;
 		switch (command_num)
 		{
 		case 0:
@@ -209,6 +209,8 @@ void Tracking_system::cmd_match()
 			cout << "Input position offset x y z yaw:";
 			cin >> x >> y >> z >> yaw;
 			fetch.start_position_control(x, y, z, yaw);
+			cin.sync();
+			cin.clear();
 			break;
 		case 12:
 			fetch.start_approaching();
@@ -224,9 +226,27 @@ void Tracking_system::cmd_match()
 			quit = true;
 			break;
 		case 16:
-			cout << "Input parameters timeoutInS posThresholdInCm maxSpeedInM:";
-			cin >> timeoutInS >> posThresholdInCm >> maxSpeedInM;
-			fetch.setParameters(timeoutInS, posThresholdInCm, maxSpeedInM);
+			cout << "select parameter:\n1.timeoutInS\n2.posThresholdInCm\n3.maxSpeedInM\n4.yawThresholdInDeg\n5.maxYawSpeedInDeg\n";
+			cin >> num >> input;
+			switch (num) {
+			case 1:
+				fetch.set_timeoutInS(input);
+				break;
+			case 2:
+				fetch.set_posThresholdInCm(input);
+				break;
+			case 3:
+				fetch.set_maxSpeedInM(input);
+				break;
+			case 4:
+				fetch.set_yawThresholdInDeg(input);
+				break;
+			case 5:
+				fetch.set_maxYawSpeedInDeg(input);
+				break;
+			}
+			cin.sync();
+			cin.clear();
 		}
 	}
 
