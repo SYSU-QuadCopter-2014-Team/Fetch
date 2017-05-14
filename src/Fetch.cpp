@@ -107,7 +107,7 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 	int elapsedTime = 0;
 	float ex, ey, ez, eyaw;
 
-	FlightControl controller(flight, maxSpeedInM, maxYawSpeedInDeg, intervalInMs / 1000.0);
+	FlightControl controller(flight, maxSpeedInM, maxYawSpeedInDeg, intervalInS);
 	Logger eLog("error.txt");
 	Logger vLog("velocity.txt");
 
@@ -127,8 +127,8 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 		eyaw = angle(targetYaw, curEuler.yaw / DEG2RAD);
 
 		printf("err: %6.2f %6.2f %6.2f %6.2f\n", ex, ey, ez, eyaw);
-		eLog("%6.2f %6.2f %6.2f %6.2f", ex, ey, ez, eyaw);
-		vLog("%6.2f %6.2f %6.2f", bd.v.x, bd.v.y, bd.v.z);
+		eLog("%.2f,%.2f,%.2f,%.2f", ex, ey, ez, eyaw);
+		vLog("%.2f,%.2f,%.2f", bd.v.x, bd.v.y, bd.v.z);
 
 		if (std::fabs(ex) <= posThresholdInM &&
 		    std::fabs(ey) <= posThresholdInM &&
@@ -174,15 +174,15 @@ void Fetch::runKCF() {
 			plane_angle_yaw   = atan2(2.0 * (bd.q.q3 * bd.q.q0 + bd.q.q1 * bd.q.q2) , - 1.0 + 2.0 * (bd.q.q0 * bd.q.q0 + bd.q.q1 * bd.q.q1)) * 180 / Pi;
 
 			Mat error = ComputeCoordinate(plane_angle_roll, plane_angle_pitch, plane_angle_yaw,
-			                              bd.gimbal.roll, bd.gimbal.pitch, bd.gimbal.yaw, bd.pos.height, coord[0], coord[1]);
+			                              bd.gimbal.roll, bd.gimbal.pitch, bd.gimbal.yaw, bd.pos.height, u, v);
 			ex = error.at<float>(0, 0);
 			ey = error.at<float>(1, 0);
-			ez = error.at<float>(2, 0);
+			ez = error.at<float>(2, 0) - 0.5;
 
 			// todo sleep一会儿？
 
 		}
-		
+
 	} catch (Exception e) {
 		stop_task = true;  // 让其他线程退出
 	}
@@ -192,12 +192,14 @@ void Fetch::runKCF() {
 
 void Fetch::approaching()
 {
+	ex = 0, ey = 0, ez = 0, eyaw = 0, u = 0, v = 0;
+
 	const float32_t posThresholdInM = posThresholdInCm / 100;
 
 	bool above = false;  // 是否飞到目标上方
 	int elapsedTime = 0;
 
-	FlightControl controller(flight, maxSpeedInM, maxYawSpeedInDeg, intervalInMs / 1000.0);
+	FlightControl controller(flight, maxSpeedInM, maxYawSpeedInDeg, intervalInS);
 	Logger eLog("error.txt");
 	Logger vLog("velocity.txt");
 
@@ -208,8 +210,8 @@ void Fetch::approaching()
 		// 误差由KCF线程实时求出
 
 		printf("err: %6.2f %6.2f %6.2f %6.2f\n", ex, ey, ez, eyaw);
-		eLog("%6.2f %6.2f %6.2f %6.2f", ex, ey, ez, eyaw);
-		vLog("%6.2f %6.2f %6.2f", bd.v.x, bd.v.y, bd.v.z);
+		eLog("%.2f,%.2f,%.2f,%.2f", ex, ey, ez, eyaw);
+		vLog("%.2f,%.2f,%.2f", bd.v.x, bd.v.y, bd.v.z);
 
 		// 检查任务完成情况
 		if (std::fabs(ex) <= posThresholdInM &&

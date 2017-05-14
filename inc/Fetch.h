@@ -51,7 +51,8 @@ public:
 private:
 
 	static const int frequency = 40;
-	static const int intervalInMs = 1000.0f / frequency;
+	static const float intervalInS = 1.0f / frequency;
+	static const int intervalInMs = 1000 * intervalInS;
 
 	Flight *flight;
 	CoreAPI *api;

@@ -20,7 +20,7 @@ int Logger::operator()(const char *fmt, ...) {
 		s--;
 	}
 	char time[20];
-	sprintf(time, "%3d.%06d", s, us);
+	sprintf(time, "%d.%06d,", s, us);
 
 	char buffer[1000];
 	va_list vArgList;

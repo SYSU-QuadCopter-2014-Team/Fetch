@@ -15,7 +15,7 @@ void FlightControl::control(data_t ex, data_t ey, data_t ez, data_t eyaw) {
 	uy = yController(ey);
 	uz = zController(ez);
 	uyaw = yawController(eyaw);
-	logger("%6.2f %6.2f %6.2f %6.2f", ux, uy, uz, uyaw);
+	logger("%.2f,%.2f,%.2f,%.2f", ux, uy, uz, uyaw);
 	send_control(flag, ux, uy, uz, uyaw);
 }
 
