@@ -7,6 +7,7 @@
 
 #include <DJI_Type.h>
 #include <DJI_API.h>
+#include <DJI_Camera.h>
 #include <DJI_Flight.h>
 
 #include <string>
@@ -29,9 +30,7 @@ public:
 
 	Fetch(float timeoutInS = 30.0f,
 	      float posThresholdInCm = 10.0f, float maxSpeedInM = 0.1f,
-	      float yawThresholdInDeg = 10.0f, float maxYawSpeedInDeg = 10.0f);
-	void setApi(CoreAPI * value);
-	void setFlight(Flight * value);
+	      float yawThresholdInDeg = 10.0f, float maxYawSpeedInDeg = 10.0f);\
 
 	// 任务
 
@@ -40,6 +39,10 @@ public:
 
 	// 停止当前任务
 	void stop();
+
+	create_declaration(Flight *, flight);
+	create_declaration(CoreAPI *, api);
+	create_declaration(Camera *, camera);
 
 	// 任务参数
 	create_declaration(float, timeoutInS);
@@ -52,10 +55,7 @@ private:
 
 	static const int frequency = 40;
 	static const float intervalInS = 1.0f / frequency;
-	static const int intervalInMs = 1000 * intervalInS;
-
-	Flight *flight;
-	CoreAPI *api;
+	static const int intervalInMs = 1000.0f / frequency;\
 
 	BroadcastData bd;
 
@@ -64,6 +64,7 @@ private:
 
 	bool stop_task;  // 任务停止信号
 	float ex, ey, ez, eyaw;  // 保存线程的计算结果
+	float u, v;  // 目标在图上的位置
 
 	// position_control任务
 

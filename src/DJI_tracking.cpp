@@ -111,8 +111,9 @@ Tracking_system::Tracking_system(CoreAPI * controlAPI, long int keyID, char * ke
 	camera = new Camera(api);
 	flight = new Flight(api);
 
-	fetch.setApi(api);
-	fetch.setFlight(flight);
+	fetch.set_api(api);
+	fetch.set_flight(flight);
+	fetch.set_camera(camera);
 }
 
 void Tracking_system::Display_manu()

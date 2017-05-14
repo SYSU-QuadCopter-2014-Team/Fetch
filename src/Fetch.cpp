@@ -21,10 +21,6 @@ Fetch::Fetch(float timeoutInS, float posThresholdInCm, float maxSpeedInM, float 
 	stop_task = true;
 }
 
-void Fetch::setApi(CoreAPI * value) {api = value;}
-
-void Fetch::setFlight(Flight * value) {flight = value;}
-
 void Fetch::start_position_control(float x, float y, float z, float yaw) {
 	stop_task = false;
 	boost::thread move(boost::bind(&Fetch::moveByPositionOffset, this, x, y, z, yaw));
@@ -42,6 +38,10 @@ void Fetch::start_approaching()
 void Fetch::stop() {
 	stop_task = true;
 }
+
+create_definition(Fetch, Flight *, flight);
+create_definition(Fetch, CoreAPI *, api);
+create_definition(Fetch, Camera *, camera);
 
 create_definition(Fetch, float, timeoutInS);
 create_definition(Fetch, float, posThresholdInCm);
@@ -133,8 +133,13 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 		if (std::fabs(ex) <= posThresholdInM &&
 		    std::fabs(ey) <= posThresholdInM &&
 		    std::fabs(ez) <= posThresholdInM &&
-		    std::fabs(eyaw) <= yawThresholdInDeg)
+			std::fabs(bd.v.x) <= posThresholdInM &&
+		    std::fabs(bd.v.y) <= posThresholdInM &&
+		    std::fabs(bd.v.z) <= posThresholdInM &&
+		    std::fabs(eyaw) <= yawThresholdInDeg) {
+			std::cout << "finish move\n";
 			break;
+		}
 
 		controller.control(ex, ey, ez, eyaw);
 
@@ -166,6 +171,8 @@ void Fetch::runKCF() {
 			if (stop_task) break;
 
 			float *coord = twd.getObjectCoordinate();
+			u = coord[0];
+			v = coord[1];
 
 			bd = api->getBroadcastData();
 
@@ -198,10 +205,14 @@ void Fetch::approaching()
 
 	bool above = false;  // 是否飞到目标上方
 	int elapsedTime = 0;
+	DJI::onboardSDK::GimbalSpeedData Gdata;
 
+	PIDControl yawControl(1, 0, 0, 20, intervalInS);
+	PIDControl pitchControl(1, 0, 0, 20, intervalInS);
 	FlightControl controller(flight, maxSpeedInM, maxYawSpeedInDeg, intervalInS);
 	Logger eLog("error.txt");
 	Logger vLog("velocity.txt");
+	Logger uvLog("uv.txt");
 
 	while (1) {
 
@@ -212,19 +223,29 @@ void Fetch::approaching()
 		printf("err: %6.2f %6.2f %6.2f %6.2f\n", ex, ey, ez, eyaw);
 		eLog("%.2f,%.2f,%.2f,%.2f", ex, ey, ez, eyaw);
 		vLog("%.2f,%.2f,%.2f", bd.v.x, bd.v.y, bd.v.z);
+		uvLog("%.2f,%.2f", u, v);
 
 		// 检查任务完成情况
 		if (std::fabs(ex) <= posThresholdInM &&
-		    std::fabs(ey) <= posThresholdInM) {
+		    std::fabs(ey) <= posThresholdInM &&
+			std::fabs(bd.v.x) <= posThresholdInM &&
+		    std::fabs(bd.v.y) <= posThresholdInM) {
 			if (!above) {
 				cout << "finish fly to above\n";
 				above = true;
 			}
-			if (std::fabs(ez) <= posThresholdInM) {
+			if (std::fabs(ez) <= posThresholdInM &&
+		    	std::fabs(bd.v.z) <= posThresholdInM) {
 				cout << "finish approach\n";
 				break;
 			}
 		}
+
+		Gdata.yaw = yawControl(u);
+		Gdata.pitch = pitchControl(v);
+		Gdata.roll = 0;
+		Gdata.reserved = 0x80;
+		camera->setGimbalSpeed(&Gdata);
 
 		controller.control(ex, ey, above ? ez : 0, eyaw);
 
