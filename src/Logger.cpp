@@ -1,7 +1,7 @@
 #include "Logger.h"
 
 Logger::Logger(std::string name)
-	: ofs((getTime() + "_" + name).c_str()) {
+	: ofs((name + "_" + getTime()).c_str()) {
 	gettimeofday(&tv, NULL);
 	startS = tv.tv_sec;
 	startUs = tv.tv_usec;

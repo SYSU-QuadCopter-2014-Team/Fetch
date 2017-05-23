@@ -15,8 +15,11 @@
 
 using namespace std;
 
-Fetch::Fetch(float timeoutInS, float posThresholdInCm, float maxSpeedInM, float yawThresholdInDeg, float maxYawSpeedInDeg)
-	: timeoutInS(timeoutInS), posThresholdInCm(posThresholdInCm), maxSpeedInM(maxSpeedInM), yawThresholdInDeg(yawThresholdInDeg), maxYawSpeedInDeg(maxYawSpeedInDeg)
+Fetch::Fetch(float timeoutInS, float posThresholdInCm, float maxSpeedInM, float yawThresholdInDeg, float maxYawSpeedInDeg, float frequency)
+	: timeoutInS(timeoutInS),
+	  posThresholdInCm(posThresholdInCm), maxSpeedInM(maxSpeedInM),
+	  yawThresholdInDeg(yawThresholdInDeg), maxYawSpeedInDeg(maxYawSpeedInDeg),
+	  frequency(frequency)
 {
 	stop_task = true;
 }
@@ -48,6 +51,7 @@ create_definition(Fetch, float, posThresholdInCm);
 create_definition(Fetch, float, maxSpeedInM);
 create_definition(Fetch, float, yawThresholdInDeg);
 create_definition(Fetch, float, maxYawSpeedInDeg);
+create_definition(Fetch, float, frequency);
 
 //! Helper Functions
 /*! Very simple calculation of local NED offset between two pairs of GPS coordinates.
@@ -98,18 +102,19 @@ float angle(float target, float current) {
 // todo finish the record about yaw
 void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 
+	const float intervalInS = 1.0f / frequency;
 	const float posThresholdInM = posThresholdInCm / 100;
 
 	PositionData originPosition = api->getBroadcastData().pos;
 	const float targetYaw = angle(toEulerAngle(api->getBroadcastData().q).yaw / DEG2RAD, -yaw);  // 相当于做加法
 
 	Vector3dData curLocalOffset;
-	int elapsedTime = 0;
+	float elapsedTime = 0;
 	float ex, ey, ez, eyaw;
 
 	FlightControl controller(flight, maxSpeedInM, maxYawSpeedInDeg, intervalInS);
-	Logger eLog("error.txt");
-	Logger vLog("velocity.txt");
+	Logger eLog("../log/error");
+	Logger vLog("../log/velocity");
 
 	while (true) {
 
@@ -131,21 +136,21 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 		vLog("%.2f,%.2f,%.2f", bd.v.x, bd.v.y, bd.v.z);
 
 		if (std::fabs(ex) <= posThresholdInM &&
-		    std::fabs(ey) <= posThresholdInM &&
-		    std::fabs(ez) <= posThresholdInM &&
-			std::fabs(bd.v.x) <= posThresholdInM &&
-		    std::fabs(bd.v.y) <= posThresholdInM &&
-		    std::fabs(bd.v.z) <= posThresholdInM &&
-		    std::fabs(eyaw) <= yawThresholdInDeg) {
+		        std::fabs(ey) <= posThresholdInM &&
+		        std::fabs(ez) <= posThresholdInM &&
+		        std::fabs(bd.v.x) <= posThresholdInM &&
+		        std::fabs(bd.v.y) <= posThresholdInM &&
+		        std::fabs(bd.v.z) <= posThresholdInM &&
+		        std::fabs(eyaw) <= yawThresholdInDeg) {
 			std::cout << "finish move\n";
 			break;
 		}
 
 		controller.control(ex, ey, ez, eyaw);
 
-		usleep(intervalInMs * 1000);
-		elapsedTime += intervalInMs;
-		if (elapsedTime >= timeoutInS * 1000) {
+		usleep(intervalInS * 1000000);
+		elapsedTime += intervalInS;
+		if (elapsedTime >= timeoutInS) {
 			std::cout << timeoutInS << "s Timed out\n";
 			break;
 		}
@@ -201,18 +206,19 @@ void Fetch::approaching()
 {
 	ex = 0, ey = 0, ez = 0, eyaw = 0, u = 0, v = 0;
 
+	const float intervalInS = 1.0f / frequency;
 	const float32_t posThresholdInM = posThresholdInCm / 100;
 
 	bool above = false;  // 是否飞到目标上方
-	int elapsedTime = 0;
+	float elapsedTime = 0;
 	DJI::onboardSDK::GimbalSpeedData Gdata;
 
 	PIDControl yawControl(1, 0, 0, 20, intervalInS);
 	PIDControl pitchControl(1, 0, 0, 20, intervalInS);
 	FlightControl controller(flight, maxSpeedInM, maxYawSpeedInDeg, intervalInS);
-	Logger eLog("error.txt");
-	Logger vLog("velocity.txt");
-	Logger uvLog("uv.txt");
+	Logger eLog("../log/error");
+	Logger vLog("../log/velocity");
+	Logger uvLog("../log/uv");
 
 	while (1) {
 
@@ -227,15 +233,15 @@ void Fetch::approaching()
 
 		// 检查任务完成情况
 		if (std::fabs(ex) <= posThresholdInM &&
-		    std::fabs(ey) <= posThresholdInM &&
-			std::fabs(bd.v.x) <= posThresholdInM &&
-		    std::fabs(bd.v.y) <= posThresholdInM) {
+		        std::fabs(ey) <= posThresholdInM &&
+		        std::fabs(bd.v.x) <= posThresholdInM &&
+		        std::fabs(bd.v.y) <= posThresholdInM) {
 			if (!above) {
 				cout << "finish fly to above\n";
 				above = true;
 			}
 			if (std::fabs(ez) <= posThresholdInM &&
-		    	std::fabs(bd.v.z) <= posThresholdInM) {
+			        std::fabs(bd.v.z) <= posThresholdInM) {
 				cout << "finish approach\n";
 				break;
 			}
@@ -249,9 +255,9 @@ void Fetch::approaching()
 
 		controller.control(ex, ey, above ? ez : 0, eyaw);
 
-		usleep(intervalInMs * 1000);
-		elapsedTime += intervalInMs;
-		if (elapsedTime >= timeoutInS * 1000) {
+		usleep(intervalInS * 1000000);
+		elapsedTime += intervalInS;
+		if (elapsedTime >= timeoutInS) {
 			stop_task = true;  // 让其他线程退出
 			std::cout << timeoutInS << "s Timed out\n";
 			break;

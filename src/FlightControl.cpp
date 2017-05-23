@@ -1,13 +1,12 @@
 #include "FlightControl.h"
 
-// todo 设置PID参数
 FlightControl::FlightControl(Flight *flight, data_t maxV, data_t maxYaw, data_t ts)
 	: flight(flight),
-	  xController(1.0f, 0.1f, 0.01f, maxV, ts),
-	  yController(1.0f, 0.1f, 0.01f, maxV, ts),
-	  zController(0.7f, 0.1f, 0, maxV, ts),
-	  yawController(1, 0, 0, maxYaw, ts),
-	  logger("u.txt") {}
+	  xController("../config/kx", maxV, ts),
+	  yController("../config/ky", maxV, ts),
+	  zController("../config/kz", maxV, ts),
+	  yawController("../config/kyaw", maxYaw, ts),
+	  logger("../log/u") {}
 
 void FlightControl::control(data_t ex, data_t ey, data_t ez, data_t eyaw) {
 	data_t ux, uy, uz, uyaw;

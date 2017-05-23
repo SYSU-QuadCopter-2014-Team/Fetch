@@ -227,7 +227,7 @@ void Tracking_system::cmd_match()
 			quit = true;
 			break;
 		case 16:
-			cout << "select parameter:\n1.timeoutInS\n2.posThresholdInCm\n3.maxSpeedInM\n4.yawThresholdInDeg\n5.maxYawSpeedInDeg\n";
+			cout << "select parameter:\n1.timeoutInS\n2.posThresholdInCm\n3.maxSpeedInM\n4.yawThresholdInDeg\n5.maxYawSpeedInDeg\n6.frequency\n";
 			cin >> num >> input;
 			switch (num) {
 			case 1:
@@ -244,6 +244,9 @@ void Tracking_system::cmd_match()
 				break;
 			case 5:
 				fetch.set_maxYawSpeedInDeg(input);
+				break;
+			case 6:
+				fetch.set_frequency(input);
 				break;
 			}
 			cin.sync();

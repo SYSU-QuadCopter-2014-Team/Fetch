@@ -30,7 +30,8 @@ public:
 
 	Fetch(float timeoutInS = 30.0f,
 	      float posThresholdInCm = 10.0f, float maxSpeedInM = 0.1f,
-	      float yawThresholdInDeg = 10.0f, float maxYawSpeedInDeg = 10.0f);\
+	      float yawThresholdInDeg = 10.0f, float maxYawSpeedInDeg = 10.0f,
+	      float frequency = 40.0f);\
 
 	// 任务
 
@@ -50,12 +51,12 @@ public:
 	create_declaration(float, maxSpeedInM);
 	create_declaration(float, yawThresholdInDeg);
 	create_declaration(float, maxYawSpeedInDeg);
+	create_declaration(float, frequency);
 
 private:
 
-	static const int frequency = 40;
-	static const float intervalInS = 1.0f / frequency;
-	static const int intervalInMs = 1000.0f / frequency;\
+	//static const float intervalInS = 1.0f / frequency;
+	//static const int intervalInMs = 1000.0f / frequency;\
 
 	BroadcastData bd;
 
