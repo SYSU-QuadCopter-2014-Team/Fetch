@@ -112,7 +112,7 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 	float elapsedTime = 0;
 	float ex, ey, ez, eyaw;
 
-	FlightControl controller(flight, maxSpeedInM, maxYawSpeedInDeg, intervalInS);
+	FlightControl controller(flight, 0x49, maxSpeedInM, maxYawSpeedInDeg, intervalInS);  // 世界坐标系的速度控制
 	Logger eLog("../log/error");
 	Logger vLog("../log/velocity");
 
@@ -215,7 +215,7 @@ void Fetch::approaching()
 
 	PIDControl yawControl(1, 0, 0, 20, intervalInS);
 	PIDControl pitchControl(1, 0, 0, 20, intervalInS);
-	FlightControl controller(flight, maxSpeedInM, maxYawSpeedInDeg, intervalInS);
+	FlightControl controller(flight, 0x4B, maxSpeedInM, maxYawSpeedInDeg, intervalInS);  // 机体坐标系的速度控制
 	Logger eLog("../log/error");
 	Logger vLog("../log/velocity");
 	Logger uvLog("../log/uv");

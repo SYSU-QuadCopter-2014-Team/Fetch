@@ -1,7 +1,8 @@
 #include "FlightControl.h"
 
-FlightControl::FlightControl(Flight *flight, data_t maxV, data_t maxYaw, data_t ts)
+FlightControl::FlightControl(Flight *flight, uint8_t flag, data_t maxV, data_t maxYaw, data_t ts)
 	: flight(flight),
+	  flag(flag),
 	  xController("../config/kx", maxV, ts),
 	  yController("../config/ky", maxV, ts),
 	  zController("../config/kz", maxV, ts),

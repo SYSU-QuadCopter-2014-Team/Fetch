@@ -20,8 +20,8 @@ public:
 
 	typedef float data_t;
 
-	// 参数：飞行API指针flight，最大速度控制量maxV，最大偏航角控制量maxYaw，时间间隔ts。
-	FlightControl(Flight *flight, data_t maxV, data_t maxYaw, data_t ts);
+	// 参数：飞行API指针flight，控制flag，最大速度控制量maxV，最大偏航角控制量maxYaw，时间间隔ts。
+	FlightControl(Flight *flight, uint8_t flag, data_t maxV, data_t maxYaw, data_t ts);
 
 	// 传入误差进行控制
 	void control(data_t ex, data_t ey, data_t ez, data_t eyaw);
@@ -32,9 +32,9 @@ private:
 
 	void send_control(uint8_t flag, float x, float y, float z, float yaw);
 
-	static const uint8_t flag = 0x49;  // Velocity Control
+	const uint8_t flag;  // Control mode byte
 
-	Flight *flight;
+	const Flight *flight;
 
 	PIDControl xController;
 	PIDControl yController;
