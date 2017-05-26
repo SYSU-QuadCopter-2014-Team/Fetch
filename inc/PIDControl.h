@@ -25,6 +25,8 @@ private:
 	data_t I;
 	data_t err0;
 
+	bool first;
+
 };
 
 #endif // PIDCONTROL_H

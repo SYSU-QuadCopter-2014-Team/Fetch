@@ -28,8 +28,8 @@ class Fetch {
 
 public:
 
-	Fetch(float timeoutInS = 30.0f,
-	      float posThresholdInCm = 10.0f, float maxSpeedInM = 0.1f,
+	Fetch(float timeoutInS = 60.0f,
+	      float posThresholdInCm = 5.0f, float maxSpeedInM = 0.2f,
 	      float yawThresholdInDeg = 10.0f, float maxYawSpeedInDeg = 10.0f,
 	      float frequency = 40.0f);\
 
