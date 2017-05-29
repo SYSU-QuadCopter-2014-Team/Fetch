@@ -6,7 +6,6 @@
 
 #include "Fetch.h"
 
-#include "FlightControl.h"
 #include "PIDControl.h"
 #include "Logger.h"
 
@@ -22,6 +21,7 @@ Fetch::Fetch(float timeoutInS, float posThresholdInCm, float maxSpeedInM, float 
 	  frequency(frequency)
 {
 	stop_task = true;
+	target_found = false;
 }
 
 void Fetch::start_position_control(float x, float y, float z, float yaw) {
@@ -33,6 +33,7 @@ void Fetch::start_position_control(float x, float y, float z, float yaw) {
 void Fetch::start_approaching()
 {
 	stop_task = false;
+	target_found = false;
 	boost::thread kcf(boost::bind(&Fetch::runKCF, this));
 	boost::thread approach(boost::bind(&Fetch::approaching, this));
 	//track.detach();
@@ -104,6 +105,7 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 
 	const float intervalInS = 1.0f / frequency;
 	const float posThresholdInM = posThresholdInCm / 100;
+	const uint8_t flag = 0x49;  // 世界坐标系的速度控制
 
 	PositionData originPosition = api->getBroadcastData().pos;
 	const float targetYaw = angle(toEulerAngle(api->getBroadcastData().q).yaw / DEG2RAD, -yaw);  // 相当于做加法
@@ -111,8 +113,13 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 	Vector3dData curLocalOffset;
 	float elapsedTime = 0;
 	float ex, ey, ez, eyaw;
+	float ux, uy, uz, uyaw;
 
-	FlightControl controller(flight, 0x49, maxSpeedInM, maxYawSpeedInDeg, intervalInS);  // 世界坐标系的速度控制
+	PIDControl xController("../config/kx", maxSpeedInM, intervalInS);
+	PIDControl yController("../config/ky", maxSpeedInM, intervalInS);
+	PIDControl zController("../config/kz", maxSpeedInM, intervalInS);
+	PIDControl yawController("../config/kyaw", maxYawSpeedInDeg, intervalInS);
+	Logger uLog("../log/u");
 	Logger eLog("../log/error");
 	Logger vLog("../log/velocity");
 
@@ -135,30 +142,36 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 		eLog("%.2f,%.2f,%.2f,%.2f", ex, ey, ez, eyaw);
 		vLog("%.2f,%.2f,%.2f", bd.v.x, bd.v.y, bd.v.z);
 
-		if (std::fabs(ex) <= posThresholdInM &&
-		        std::fabs(ey) <= posThresholdInM &&
-		        std::fabs(ez) <= posThresholdInM &&
-		        std::fabs(bd.v.x) <= posThresholdInM &&
-		        std::fabs(bd.v.y) <= posThresholdInM &&
-		        std::fabs(bd.v.z) <= posThresholdInM &&
-		        std::fabs(eyaw) <= yawThresholdInDeg) {
-			std::cout << "finish move\n";
+		if (fabs(ex) <= posThresholdInM &&
+		        fabs(ey) <= posThresholdInM &&
+		        fabs(ez) <= posThresholdInM &&
+		        fabs(bd.v.x) <= posThresholdInM &&
+		        fabs(bd.v.y) <= posThresholdInM &&
+		        fabs(bd.v.z) <= posThresholdInM &&
+		        fabs(eyaw) <= yawThresholdInDeg) {
+			cout << "finish move\n";
 			break;
 		}
 
-		controller.control(ex, ey, ez, eyaw);
+		// 计算控制量，发送控制
+		ux = xController(ex);
+		uy = yController(ey);
+		uz = zController(ez);
+		uyaw = yawController(eyaw);
+		uLog("%.2f,%.2f,%.2f,%.2f", ux, uy, uz, uyaw);
+		flight_control(flag, ux, uy, uz, uyaw);
 
 		usleep(intervalInS * 1000000);
 		elapsedTime += intervalInS;
 		if (elapsedTime >= timeoutInS) {
-			std::cout << timeoutInS << "s Timed out\n";
+			cout << timeoutInS << "s Timed out\n";
 			break;
 		}
 
 	}
 
-	controller.stop();
-	std::cout << "moveByPositionOffset thread exit\n";
+	flight_control(0x49, 0, 0, 0, 0);  // stop
+	cout << "moveByPositionOffset thread exit\n";
 }
 
 // 线程：使用KCF算法计算目标物体的相对位置。
@@ -176,8 +189,8 @@ void Fetch::runKCF() {
 			if (stop_task) break;
 
 			float *coord = twd.getObjectCoordinate();
-			u = coord[0];
-			v = coord[1];
+			float u = coord[0];
+			float v = coord[1];
 
 			bd = api->getBroadcastData();
 
@@ -191,6 +204,11 @@ void Fetch::runKCF() {
 			ey = error.at<float>(1, 0);
 			ez = error.at<float>(2, 0) - 0.5;
 
+			tex = 0;
+			tey = 0;
+
+			target_found = true;
+
 			// todo sleep一会儿？
 
 		}
@@ -199,72 +217,100 @@ void Fetch::runKCF() {
 		stop_task = true;  // 让其他线程退出
 	}
 
-	std::cout << "runKCF thread exit\n";
+	cout << "runKCF thread exit\n";
 }
 
 void Fetch::approaching()
 {
-	ex = 0, ey = 0, ez = 0, eyaw = 0, u = 0, v = 0;
+	ex = 0, ey = 0, ez = 0, eyaw = 0, tex = 0, tey = 0;
 
 	const float intervalInS = 1.0f / frequency;
 	const float32_t posThresholdInM = posThresholdInCm / 100;
+	const uint8_t flag = 0x4B;  // 机体坐标系的速度控制
 
 	bool above = false;  // 是否飞到目标上方
 	float elapsedTime = 0;
 	DJI::onboardSDK::GimbalSpeedData Gdata;
+	float ux, uy, uz, uyaw;
 
-	PIDControl yawControl(1, 0, 0, 20, intervalInS);
-	PIDControl pitchControl(1, 0, 0, 20, intervalInS);
-	FlightControl controller(flight, 0x4B, maxSpeedInM, maxYawSpeedInDeg, intervalInS);  // 机体坐标系的速度控制
+	while (!target_found);
+
+	PIDControl gimbal_yawControl(2, 0, 0, 50, intervalInS);
+	PIDControl gimbal_pitchControl(2, 0, 0, 50, intervalInS);
+	PIDControl xController("../config/kx", maxSpeedInM, intervalInS);
+	PIDControl yController("../config/ky", maxSpeedInM, intervalInS);
+	PIDControl zController("../config/kz", maxSpeedInM, intervalInS);
+	PIDControl yawController("../config/kyaw", maxYawSpeedInDeg, intervalInS);
+	Logger uLog("../log/u");
 	Logger eLog("../log/error");
 	Logger vLog("../log/velocity");
-	Logger uvLog("../log/uv");
+	Logger teLog("../log/target_error");
 
 	while (1) {
 
 		if (stop_task) break;
+
+		if (!target_found) continue;
 
 		// 误差由KCF线程实时求出
 
 		printf("err: %6.2f %6.2f %6.2f %6.2f\n", ex, ey, ez, eyaw);
 		eLog("%.2f,%.2f,%.2f,%.2f", ex, ey, ez, eyaw);
 		vLog("%.2f,%.2f,%.2f", bd.v.x, bd.v.y, bd.v.z);
-		uvLog("%.2f,%.2f", u, v);
+		teLog("%.2f,%.2f", tex, tey);
 
 		// 检查任务完成情况
-		if (std::fabs(ex) <= posThresholdInM &&
-		        std::fabs(ey) <= posThresholdInM &&
-		        std::fabs(bd.v.x) <= posThresholdInM &&
-		        std::fabs(bd.v.y) <= posThresholdInM) {
+		if (fabs(ex) <= posThresholdInM &&
+		        fabs(ey) <= posThresholdInM &&
+		        fabs(bd.v.x) <= posThresholdInM &&
+		        fabs(bd.v.y) <= posThresholdInM) {
 			if (!above) {
 				cout << "finish fly to above\n";
 				above = true;
 			}
-			if (std::fabs(ez) <= posThresholdInM &&
-			        std::fabs(bd.v.z) <= posThresholdInM) {
+			if (fabs(ez) <= posThresholdInM &&
+			        fabs(bd.v.z) <= posThresholdInM) {
 				cout << "finish approach\n";
 				break;
 			}
 		}
 
-		Gdata.yaw = yawControl(u);
-		Gdata.pitch = pitchControl(v);
+		// 云台控制。准备使用kcf得到的像素值偏移量
+		Gdata.yaw = gimbal_yawControl(tex);
+		Gdata.pitch = gimbal_pitchControl(tey);
 		Gdata.roll = 0;
 		Gdata.reserved = 0x80;
 		camera->setGimbalSpeed(&Gdata);
 
-		controller.control(ex, ey, above ? ez : 0, eyaw);
+		// 计算控制量，发送控制
+		ux = xController(ex);
+		uy = yController(ey);
+		uz = zController(above ? ez : 0);
+		uyaw = yawController(eyaw);
+		uLog("%.2f,%.2f,%.2f,%.2f", ux, uy, uz, uyaw);
+		flight_control(flag, ux, uy, uz, uyaw);
 
 		usleep(intervalInS * 1000000);
 		elapsedTime += intervalInS;
 		if (elapsedTime >= timeoutInS) {
 			stop_task = true;  // 让其他线程退出
-			std::cout << timeoutInS << "s Timed out\n";
+			cout << timeoutInS << "s Timed out\n";
 			break;
 		}
 
 	}
 
-	controller.stop();
-	std::cout << "approaching thread exit\n";
+	flight_control(0x49, 0, 0, 0, 0);  // stop
+	cout << "approaching thread exit\n";
+}
+
+void Fetch::flight_control(uint8_t flag, float x, float y, float z, float yaw)
+{
+	FlightData fd;
+	fd.flag = flag;
+	fd.x = x;
+	fd.y = y;
+	fd.z = z;
+	fd.yaw = yaw;
+	flight->setFlight(&fd);
 }

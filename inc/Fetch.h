@@ -31,7 +31,7 @@ public:
 	Fetch(float timeoutInS = 60.0f,
 	      float posThresholdInCm = 5.0f, float maxSpeedInM = 0.2f,
 	      float yawThresholdInDeg = 10.0f, float maxYawSpeedInDeg = 10.0f,
-	      float frequency = 40.0f);\
+	      float frequency = 40.0f);
 
 	// 任务
 
@@ -55,17 +55,12 @@ public:
 
 private:
 
-	//static const float intervalInS = 1.0f / frequency;
-	//static const int intervalInMs = 1000.0f / frequency;\
-
 	BroadcastData bd;
 
 	//////////////////////////
 	// 线程
 
 	bool stop_task;  // 任务停止信号
-	float ex, ey, ez, eyaw;  // 保存线程的计算结果
-	float u, v;  // 目标在图上的位置
 
 	// position_control任务
 
@@ -75,8 +70,14 @@ private:
 
 	void runKCF();
 	void approaching();
+	bool target_found;
+	float ex, ey, ez, eyaw;  // 保存线程的计算结果
+	float tex, tey;  // 目标在图像中心的偏移量
 
 	//////////////////////////
+
+	// 发送控制
+	void flight_control(uint8_t flag, float x, float y, float z, float yaw);
 
 };
 
