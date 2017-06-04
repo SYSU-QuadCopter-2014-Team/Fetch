@@ -93,7 +93,10 @@ string commandList[] =
 	"st",
 	"sh",
 	"qs",
-	"sp"
+	"sp",
+	"fet",
+	"rel",
+	"saf",
 };
 
 /*member function for system*/
@@ -139,6 +142,9 @@ void Tracking_system::Display_manu()
 	cout << "| - < 14.sh > set hight                                         |" << endl;
 	cout << "| - < 15.qs > quit system                                       |" << endl;
 	cout << "| - < 16.sp > set parameters                                    |" << endl;
+	cout << "| - < 17.fet > arm: fetch                                       |" << endl;
+	cout << "| - < 18.rel > arm: release                                     |" << endl;
+	cout << "| - < 19.saf > start auto fetch                                 |" << endl;
 	cout << "|                                                               |" << endl;
 	cout << "|------------------DJI onboardSDK command line------------------|" << endl;
 	cout << endl;
@@ -251,6 +257,16 @@ void Tracking_system::cmd_match()
 			}
 			cin.sync();
 			cin.clear();
+			break;
+		case 17:
+			fetch.fetch();
+			break;
+		case 18:
+			fetch.release();
+			break;
+		case 19:
+			fetch.start_auto_fetch();
+			break;
 		}
 	}
 

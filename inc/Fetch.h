@@ -29,7 +29,7 @@ class Fetch {
 public:
 
 	Fetch(float timeoutInS = 60.0f,
-	      float posThresholdInCm = 5.0f, float maxSpeedInM = 0.2f,
+	      float posThresholdInCm = 10.0f, float maxSpeedInM = 0.2f,
 	      float yawThresholdInDeg = 10.0f, float maxYawSpeedInDeg = 10.0f,
 	      float frequency = 40.0f);
 
@@ -37,6 +37,11 @@ public:
 
 	void start_position_control(float x, float y, float z, float yaw);
 	void start_approaching();
+	void start_auto_fetch();
+
+	// 机械爪命令
+	void fetch();
+	void release();
 
 	// 停止当前任务
 	void stop();
@@ -62,17 +67,15 @@ private:
 
 	bool stop_task;  // 任务停止信号
 
-	// position_control任务
-
-	void moveByPositionOffset(float x, float y, float z, float yaw);
-
-	// approaching任务
-
+	// KCF
 	void runKCF();
-	void approaching();
 	bool target_found;
 	float ex, ey, ez, eyaw;  // 保存线程的计算结果
 	float tex, tey;  // 目标在图像中心的偏移量
+
+	void moveByPositionOffset(float x, float y, float z, float yaw);  // position_control任务
+	void approaching();
+	void auto_fetch();
 
 	//////////////////////////
 
