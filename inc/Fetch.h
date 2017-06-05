@@ -28,14 +28,15 @@ class Fetch {
 
 public:
 
-	Fetch(float timeoutInS = 60.0f,
-	      float posThresholdInCm = 10.0f, float maxSpeedInM = 0.2f,
+	Fetch(float timeoutInS = 180.0f,
+	      float posThresholdInCm = 3.0f, float maxSpeedInM = 0.2f,
 	      float yawThresholdInDeg = 10.0f, float maxYawSpeedInDeg = 10.0f,
 	      float frequency = 40.0f);
 
 	// 任务
 
 	void start_position_control(float x, float y, float z, float yaw);
+	void start_height_control(float z);
 	void start_approaching();
 	void start_auto_fetch();
 
@@ -57,6 +58,9 @@ public:
 	create_declaration(float, yawThresholdInDeg);
 	create_declaration(float, maxYawSpeedInDeg);
 	create_declaration(float, frequency);
+	create_declaration(float, hoverHeight);
+	create_declaration(float, fetchHeight);
+	create_declaration(float, gimbalOffsetX);
 
 private:
 
@@ -74,6 +78,7 @@ private:
 	float tex, tey;  // 目标在图像中心的偏移量
 
 	void moveByPositionOffset(float x, float y, float z, float yaw);  // position_control任务
+	void moveByHeightOffset(float z);  // height_control任务
 	void approaching();
 	void auto_fetch();
 

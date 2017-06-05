@@ -97,6 +97,7 @@ string commandList[] =
 	"fet",
 	"rel",
 	"saf",
+	"hc",
 };
 
 /*member function for system*/
@@ -145,6 +146,7 @@ void Tracking_system::Display_manu()
 	cout << "| - < 17.fet > arm: fetch                                       |" << endl;
 	cout << "| - < 18.rel > arm: release                                     |" << endl;
 	cout << "| - < 19.saf > start auto fetch                                 |" << endl;
+	cout << "| - < 20.hc > height control (relative)                         |" << endl;
 	cout << "|                                                               |" << endl;
 	cout << "|------------------DJI onboardSDK command line------------------|" << endl;
 	cout << endl;
@@ -233,7 +235,8 @@ void Tracking_system::cmd_match()
 			quit = true;
 			break;
 		case 16:
-			cout << "select parameter:\n1.timeoutInS\n2.posThresholdInCm\n3.maxSpeedInM\n4.yawThresholdInDeg\n5.maxYawSpeedInDeg\n6.frequency\n";
+			cout << "select parameter:\n1.timeoutInS\n2.posThresholdInCm\n3.maxSpeedInM\n4.yawThresholdInDeg\n"
+			     "5.maxYawSpeedInDeg\n6.frequency\n7.hoverHeight\n8.fetchHeight\n9.gimbalOffsetX\n";
 			cin >> num >> input;
 			switch (num) {
 			case 1:
@@ -254,6 +257,15 @@ void Tracking_system::cmd_match()
 			case 6:
 				fetch.set_frequency(input);
 				break;
+			case 7:
+				fetch.set_hoverHeight(input);
+				break;
+			case 8:
+				fetch.set_fetchHeight(input);
+				break;
+			case 9:
+				fetch.set_gimbalOffsetX(input);
+				break;
 			}
 			cin.sync();
 			cin.clear();
@@ -266,6 +278,13 @@ void Tracking_system::cmd_match()
 			break;
 		case 19:
 			fetch.start_auto_fetch();
+			break;
+		case 20:
+			cout << "Input height offset z:";
+			cin >> z;
+			fetch.start_height_control(z);
+			cin.sync();
+			cin.clear();
 			break;
 		}
 	}

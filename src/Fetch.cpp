@@ -24,6 +24,9 @@ Fetch::Fetch(float timeoutInS, float posThresholdInCm, float maxSpeedInM, float 
 	stop_task = true;
 	target_found = false;
 
+	hoverHeight = 2;
+	fetchHeight = 0.5;
+
 	// 使用之前，先执行命令 sudo insmod /lib/modules/3.10.40/kernel/drivers/usb/serial/cp210x.ko
 	// 读入串口路径，若为"-",则默认设置/dev/ttyUSB0, 不一定对。请自己找下
 	// 查找命令 ls -l /dev/ttyUSB*
@@ -34,6 +37,11 @@ Fetch::Fetch(float timeoutInS, float posThresholdInCm, float maxSpeedInM, float 
 void Fetch::start_position_control(float x, float y, float z, float yaw) {
 	stop_task = false;
 	boost::thread move(boost::bind(&Fetch::moveByPositionOffset, this, x, y, z, yaw));
+}
+
+void Fetch::start_height_control(float z) {
+	stop_task = false;
+	boost::thread move(boost::bind(&Fetch::moveByHeightOffset, this, z));
 }
 
 void Fetch::start_approaching()
@@ -55,7 +63,7 @@ void Fetch::start_auto_fetch()
 // len是爪子尖端之间的距离，0～29
 // speed是旋转角速度建议1～10  实际0～20
 void Fetch::fetch() {
-	double len = 10;
+	double len = 5;
 	int speed = 10;
 	double height = SetArmbyLen(len, speed);  //没有加上底座高度，底座高度2.8cm
 }
@@ -80,6 +88,9 @@ create_definition(Fetch, float, maxSpeedInM);
 create_definition(Fetch, float, yawThresholdInDeg);
 create_definition(Fetch, float, maxYawSpeedInDeg);
 create_definition(Fetch, float, frequency);
+create_definition(Fetch, float, hoverHeight);
+create_definition(Fetch, float, fetchHeight);
+create_definition(Fetch, float, gimbalOffsetX);
 
 //! Helper Functions
 /*! Very simple calculation of local NED offset between two pairs of GPS coordinates.
@@ -199,6 +210,60 @@ void Fetch::moveByPositionOffset(float x, float y, float z, float yaw) {
 	cout << "moveByPositionOffset thread exit\n";
 }
 
+void Fetch::moveByHeightOffset(float z) {
+
+	const float intervalInS = 1.0f / frequency;
+	const float posThresholdInM = posThresholdInCm / 100;
+
+	float originZ = api->getBroadcastData().pos.height;
+
+	float elapsedTime = 0;
+	float ez;
+	float uz;
+
+	PIDControl zController("../config/kz", maxSpeedInM, intervalInS);
+	Logger uLog("../log/height_u");
+	Logger eLog("../log/height_error");
+	Logger vLog("../log/height_velocity");
+
+	while (true) {
+
+		if (stop_task) break;
+
+		// 计算误差
+		bd = api->getBroadcastData();
+		float curZ = bd.pos.height;
+
+		ez = z + originZ - curZ;
+
+		printf("err z: %6.2f\n", ez);
+		eLog("%.2f", ez);
+		vLog("%.2f,%.2f,%.2f", bd.v.x, bd.v.y, bd.v.z);
+
+		if (fabs(ez) <= posThresholdInM &&
+		        fabs(bd.v.z) <= posThresholdInM) {
+			cout << "finish moveHeight\n";
+			break;
+		}
+
+		// 计算控制量，发送控制
+		uz = zController(ez);
+		uLog("%.2f", uz);
+		flight_control(0x49, 0, 0, uz, 0);  // 世界坐标系的速度控制
+
+		usleep(intervalInS * 1000000);
+		elapsedTime += intervalInS;
+		if (elapsedTime >= timeoutInS) {
+			cout << timeoutInS << "s Timed out\n";
+			break;
+		}
+
+	}
+
+	flight_control(0x49, 0, 0, 0, 0);  // stop
+	cout << "moveByHeightOffset thread exit\n";
+}
+
 // 线程：使用KCF算法计算目标物体的相对位置。
 void Fetch::runKCF() {
 
@@ -225,7 +290,7 @@ void Fetch::runKCF() {
 
 			Mat error = ComputeCoordinate(plane_angle_roll, plane_angle_pitch, plane_angle_yaw,
 			                              bd.gimbal.roll, bd.gimbal.pitch, bd.gimbal.yaw, bd.pos.height, u, v);
-			ex = error.at<float>(0, 0);
+			ex = error.at<float>(0, 0) + gimbalOffsetX;
 			ey = error.at<float>(1, 0);
 			ez = - error.at<float>(2, 0);
 
@@ -257,8 +322,8 @@ void Fetch::approaching()
 	while (!target_found && !stop_task);
 	if (stop_task) return;
 
-	PIDControl gimbal_yawControl(4, 0, 0, 200, intervalInS);
-	PIDControl gimbal_pitchControl(6, 0, 0, 200, intervalInS);
+	PIDControl gimbal_yawControl(4, 0, 0, 100, intervalInS);
+	PIDControl gimbal_pitchControl(6, 0, 0, 100, intervalInS);
 	PIDControl xController("../config/kx", maxSpeedInM, intervalInS);
 	PIDControl yController("../config/ky", maxSpeedInM, intervalInS);
 	PIDControl zController("../config/kz", maxSpeedInM, intervalInS);
@@ -284,7 +349,7 @@ void Fetch::approaching()
 		// 检查任务完成情况
 		if (fabs(ex) <= posThresholdInM &&
 		        fabs(ey) <= posThresholdInM &&
-		        fabs(ez + 1.5) <= posThresholdInM &&
+		        fabs(ez + hoverHeight) <= posThresholdInM &&
 		        fabs(bd.v.x) <= posThresholdInM &&
 		        fabs(bd.v.y) <= posThresholdInM &&
 		        fabs(bd.v.z) <= posThresholdInM) {
@@ -302,7 +367,7 @@ void Fetch::approaching()
 		// 计算控制量，发送控制
 		ux = xController(ex);
 		uy = yController(ey);
-		uz = zController(ez + 1.5);
+		uz = zController(ez + hoverHeight);
 		uyaw = yawController(eyaw);
 		uLog("%.2f,%.2f,%.2f,%.2f", ux, uy, uz, uyaw);
 		flight_control(0x4B, ux, uy, uz, uyaw);  // 机体坐标系的速度控制
@@ -323,23 +388,27 @@ void Fetch::approaching()
 
 void Fetch::auto_fetch() {
 
-	// 移动到物体正上方，摄像头垂直向下对准物体
+	// 移动使机械爪移动到物体正上方
 	approaching();
 	if (stop_task) return;
 
-	// 机体坐标系位置控制，使机械爪移动到物体正上方
-	flight_control(0x91, ex + , ey + , 0, 0);
 	// todo 停止KCF线程？
 
-	// 下降
-	moveByPositionOffset(0, 0, ez + 0.4, 0);
+	usleep(3 * 1000000);
+
+	// 下降到一定高度
+	// moveByPositionOffset(0, 0, ez + fetchHeight, 0);
+	moveByHeightOffset(ez + fetchHeight);
+	stop_task = true;
 	if (stop_task) return;
 
 	// 机械爪抓取
-	fetch();
+	// fetch();
+	usleep(2 * 1000000);
 
 	// 升高一米
-	moveByPositionOffset(0, 0, 1, 0);
+	// moveByPositionOffset(0, 0, 1, 0);
+	moveByHeightOffset(1);
 	if (stop_task) return;
 
 	// 丢掉~~~~
