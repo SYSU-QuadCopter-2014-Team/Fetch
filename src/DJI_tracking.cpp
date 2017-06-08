@@ -4,6 +4,8 @@
 //#include "Gimbalcontrol.h"
 #include "../kcfsrc/TrackWithDistance.h"
 
+//#include "read_X3.h"
+
 #include <stdio.h>
 #include <sys/time.h>
 #include <signal.h>

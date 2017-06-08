@@ -15,6 +15,9 @@
 
 using namespace std;
 
+extern bool finish_approach;
+extern int use_init_bbox_detect;
+
 Fetch::Fetch(float timeoutInS, float posThresholdInCm, float maxSpeedInM, float yawThresholdInDeg, float maxYawSpeedInDeg, float frequency)
 	: timeoutInS(timeoutInS),
 	  posThresholdInCm(posThresholdInCm), maxSpeedInM(maxSpeedInM),
@@ -23,9 +26,11 @@ Fetch::Fetch(float timeoutInS, float posThresholdInCm, float maxSpeedInM, float 
 {
 	stop_task = true;
 	target_found = false;
+	finish_approach = false;
 
 	hoverHeight = 2;
 	fetchHeight = 0.5;
+	gimbalOffsetX = 0.15;
 
 	// 使用之前，先执行命令 sudo insmod /lib/modules/3.10.40/kernel/drivers/usb/serial/cp210x.ko
 	// 读入串口路径，若为"-",则默认设置/dev/ttyUSB0, 不一定对。请自己找下
@@ -48,6 +53,7 @@ void Fetch::start_approaching()
 {
 	stop_task = false;
 	target_found = false;
+	finish_approach = false;
 	boost::thread kcf(boost::bind(&Fetch::runKCF, this));
 	boost::thread approach(boost::bind(&Fetch::approaching, this));
 }
@@ -56,6 +62,7 @@ void Fetch::start_auto_fetch()
 {
 	stop_task = false;
 	target_found = false;
+	finish_approach = false;
 	boost::thread kcf(boost::bind(&Fetch::runKCF, this));
 	boost::thread fetch(boost::bind(&Fetch::auto_fetch, this));
 }
@@ -69,7 +76,7 @@ void Fetch::fetch() {
 }
 
 void Fetch::release() {
-	double len = 29;
+	double len = 27;
 	int speed = 10;
 	double height = SetArmbyLen(len, speed);
 }
@@ -221,9 +228,10 @@ void Fetch::moveByHeightOffset(float z) {
 	float ez;
 	float uz;
 
-	PIDControl zController("../config/kz", maxSpeedInM, intervalInS);
+	PIDControl zController("../config/kz", maxSpeedInM / 2, intervalInS);
 	Logger uLog("../log/height_u");
 	Logger eLog("../log/height_error");
+	Logger hLog("../log/height_height");
 	Logger vLog("../log/height_velocity");
 
 	while (true) {
@@ -238,6 +246,7 @@ void Fetch::moveByHeightOffset(float z) {
 
 		printf("err z: %6.2f\n", ez);
 		eLog("%.2f", ez);
+		hLog("%.2f", curZ);
 		vLog("%.2f,%.2f,%.2f", bd.v.x, bd.v.y, bd.v.z);
 
 		if (fabs(ez) <= posThresholdInM &&
@@ -264,23 +273,78 @@ void Fetch::moveByHeightOffset(float z) {
 	cout << "moveByHeightOffset thread exit\n";
 }
 
+extern float ss_scale;
+extern float ss_sigma;
+extern float ss_min_size;
+extern float ss_smallest;
+extern float ss_largest;
+extern float ss_distorted;
+
 // 线程：使用KCF算法计算目标物体的相对位置。
 void Fetch::runKCF() {
+
+	cout << "Start runKCF!" << endl;
 
 	try {
 
 		double plane_angle_yaw, plane_angle_roll, plane_angle_pitch;
 
+		ss_scale = 750;
+		ss_sigma = 0.8;
+		ss_min_size = 50;
+		ss_smallest = 220;
+		ss_largest = 300;
+		ss_distorted = 2.5;
+
+		//First Detection, use multi-detect
+		use_init_bbox_detect = 1;
+		cout << "instantiating tracking with ditance" << endl;
 		TrackWithDistance twd;
+		TrackWithDistance twd2;
+		cout << "Stage 1: getting init box" << endl;
 		twd.getInitBBox();
+
+		bool stage2hasinitbox = false;
 
 		while (1) {
 
 			if (stop_task) break;
 
-			float *coord = twd.getObjectCoordinate();
-			float u = coord[0];
-			float v = coord[1];
+			float *coord;
+			float u;
+			float v;
+
+			if (!finish_approach) {
+				//cout << "Stage 1: Getting image coords" << endl;
+				coord = twd.getObjectCoordinate(1);
+				u = coord[0];
+				v = coord[1];
+			}
+			else {
+
+				ss_scale = 500;
+				ss_sigma = 0.8;
+				ss_min_size = 50;
+				ss_smallest = 50;
+				ss_largest = 2000;
+				ss_distorted = 2.5;
+
+				//Second Detection, use selective search;
+				//cout << "Stage 2: Getting image coords" << endl;
+				use_init_bbox_detect = 2;
+
+
+				if (!stage2hasinitbox) {
+					twd2.getInitBBox();
+					stage2hasinitbox = true;
+				}
+
+				coord = twd2.getObjectCoordinate(2);
+				u = coord[0];
+				v = coord[1];
+			}
+
+			//cout << "Finish getting image coords" << endl;
 
 			bd = api->getBroadcastData();
 
@@ -386,33 +450,44 @@ void Fetch::approaching()
 	cout << "approaching thread exit\n";
 }
 
+void Fetch::flight_control_sh(float set_height)
+{
+	while ((set_height - api->getBroadcastData().pos.height) > 0.1 || (api->getBroadcastData().pos.height - set_height) > 0.1)
+	{
+		flight_control(0x5B, 0, 0, set_height, 0);
+		usleep(20000);
+	}
+}
+
 void Fetch::auto_fetch() {
 
 	// 移动使机械爪移动到物体正上方
 	approaching();
 	if (stop_task) return;
 
-	// todo 停止KCF线程？
+	finish_approach = true;
 
-	usleep(3 * 1000000);
+	usleep(1 * 1000000);
+
+	approaching();
 
 	// 下降到一定高度
-	// moveByPositionOffset(0, 0, ez + fetchHeight, 0);
-	moveByHeightOffset(ez + fetchHeight);
-	stop_task = true;
+	moveByHeightOffset(fetchHeight - api->getBroadcastData().pos.height);
+	// flight_control_sh(fetchHeight);
 	if (stop_task) return;
 
 	// 机械爪抓取
-	// fetch();
+	fetch();
 	usleep(2 * 1000000);
 
 	// 升高一米
-	// moveByPositionOffset(0, 0, 1, 0);
 	moveByHeightOffset(1);
 	if (stop_task) return;
 
 	// 丢掉~~~~
 	// release();
+
+	stop_task = true;
 
 }
 

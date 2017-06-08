@@ -29,7 +29,7 @@ class Fetch {
 public:
 
 	Fetch(float timeoutInS = 180.0f,
-	      float posThresholdInCm = 3.0f, float maxSpeedInM = 0.2f,
+	      float posThresholdInCm = 5.0f, float maxSpeedInM = 0.3f,
 	      float yawThresholdInDeg = 10.0f, float maxYawSpeedInDeg = 10.0f,
 	      float frequency = 40.0f);
 
@@ -70,6 +70,7 @@ private:
 	// 线程
 
 	bool stop_task;  // 任务停止信号
+	bool finish_approach;
 
 	// KCF
 	void runKCF();
@@ -78,7 +79,7 @@ private:
 	float tex, tey;  // 目标在图像中心的偏移量
 
 	void moveByPositionOffset(float x, float y, float z, float yaw);  // position_control任务
-	void moveByHeightOffset(float z);  // height_control任务
+	void moveByHeightOffset(float z);  // height_control任务，目前使用最大速度的一半
 	void approaching();
 	void auto_fetch();
 
@@ -86,6 +87,8 @@ private:
 
 	// 发送控制
 	void flight_control(uint8_t flag, float x, float y, float z, float yaw);
+
+	void flight_control_sh(float set_height);
 
 };
 
